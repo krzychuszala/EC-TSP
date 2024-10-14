@@ -1,4 +1,6 @@
-# TSP-1
+# Evolutionary Computation
+
+## TSP-1
 
 Greedy TSP heuristics: 
 - Random solution,
