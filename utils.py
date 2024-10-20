@@ -6,6 +6,8 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 
+import time
+
 Solution = Iterable[int]
 
 
@@ -65,6 +67,10 @@ class TspInstance:
     def run_experiments(
         self, solution_getter: callable, cycle=False, num_iterations=200
     ) -> tuple[float, float, float, Solution]:
+        
+        print(f"Running experiment with solution getter: {solution_getter.__name__}")
+        start = time.time()
+        
         min = max = best = None
 
         avg = 0
@@ -83,6 +89,9 @@ class TspInstance:
             avg += cost
 
         avg /= num_iterations
+        
+        stop = time.time()
+        print(f"Time elapsed: {time.strftime('%M:%S', time.gmtime(stop - start))}")
 
         return (min, max, avg, best)
 
