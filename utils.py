@@ -1,12 +1,11 @@
 import csv
 import math
+import time
 from typing import Iterable
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
-
-import time
 
 Solution = Iterable[int]
 
@@ -27,24 +26,26 @@ class TspInstance:
                 node_costs.append(cost)
 
         size = len(node_positions)
-        distance_matrix = np.zeros((size, size), dtype=int)
-        for i in range(size):
-            for j in range(i + 1, size):
-                distance = self.euclidean_distance(
-                    *node_positions[i],
-                    *node_positions[j],
-                )
-                distance_matrix[i][j] = distance_matrix[j][i] = distance
 
-        self.distance_matrix = np.array(distance_matrix)
+        distance_matrix = np.zeros((size, size), dtype=int)
+        for start in range(size):
+            for end in range(start + 1, size):
+                distance_matrix[start][end] = distance_matrix[end][start] = (
+                    self.euclidean_distance(
+                        *node_positions[start],
+                        *node_positions[end],
+                    )
+                )
+
         self.node_positions = np.array(node_positions)
         self.node_costs = np.array(node_costs)
         self.size = size
+        self.distance_matrix = np.array(distance_matrix)
 
     def __init__(self, file_path: str):
         self.read_tsp_instance(file_path)
 
-    def get_cost(self, solution: Solution, cycle=False):
+    def get_cost(self, solution: Solution):
         cost = 0
 
         for path_index, node_index in enumerate(solution):
@@ -54,7 +55,7 @@ class TspInstance:
             if path_index < len(solution) - 1:
                 edge_from = solution[path_index]
                 edge_to = solution[path_index + 1]
-            elif cycle:
+            else:
                 edge_from = solution[-1]
                 edge_to = solution[0]
 
@@ -65,19 +66,17 @@ class TspInstance:
         return cost
 
     def run_experiments(
-        self, solution_getter: callable, cycle=False, num_iterations=200
+        self, solution_getter: callable, cycle=False
     ) -> tuple[float, float, float, Solution]:
-        
-        print(f"Running experiment with solution getter: {solution_getter.__name__}")
         start = time.time()
-        
+
         min = max = best = None
 
         avg = 0
 
-        for _ in range(num_iterations):
-            solution = solution_getter(self)
-            cost = self.get_cost(solution, cycle)
+        for start_node in range(self.size):
+            solution = solution_getter(self, start_node)
+            cost = self.get_cost(solution)
 
             if min is None or cost < min:
                 best = solution
@@ -88,10 +87,12 @@ class TspInstance:
 
             avg += cost
 
-        avg /= num_iterations
-        
+        avg /= self.size
+
         stop = time.time()
-        print(f"Time elapsed: {time.strftime('%M:%S', time.gmtime(stop - start))}")
+        print(
+            f"{solution_getter.__name__}: {time.strftime('%M:%S', time.gmtime(stop - start))}"
+        )
 
         return (min, max, avg, best)
 
