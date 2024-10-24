@@ -42,10 +42,9 @@ class TspInstance:
         self.size = size
         self.distance_matrix = np.array(distance_matrix)
 
-    def __init__(self, file_path: str, intra_type: str, start_sol_method: callable):
+    def __init__(self, file_path: str):
+        self.file_path = file_path
         self.read_tsp_instance(file_path)
-        self.intra_type = intra_type
-        self.start_sol_method = start_sol_method
 
     def get_cost(self, solution: Solution):
         cost = 0
@@ -68,7 +67,10 @@ class TspInstance:
         return cost
 
     def run_experiments(
-        self, solution_getter: callable, cycle=False
+        self,
+        solution_getter: callable,
+        initial_solution_getter: callable,
+        intra_type: str,
     ) -> tuple[float, float, float, Solution]:
         # start = time.time()
 
@@ -78,12 +80,16 @@ class TspInstance:
         avg = 0
 
         for start_node in range(self.size):
-            
             # show progress at the same line
-            print(f"\r{start_node + 1}/{self.size}", end="")
-            
+            print((f"{start_node + 1}/{self.size}").zfill(7), end=" ")
+
             start_iter = time.time()
-            solution = solution_getter(self, start_node)
+            solution = solution_getter(
+                self,
+                start_node,
+                initial_solution_getter=initial_solution_getter,
+                intra_type=intra_type,
+            )
             cost = self.get_cost(solution)
             stop_iter = time.time()
             iter_time = stop_iter - start_iter
@@ -95,11 +101,11 @@ class TspInstance:
 
             if max is None or cost > max:
                 max = cost
-            
-            # Time    
-            if min is None or iter_time < min_time:
+
+            # Time
+            if min_time is None or iter_time < min_time:
                 min_time = iter_time
-                
+
             if max_time is None or iter_time > max_time:
                 max_time = iter_time
 
@@ -165,54 +171,61 @@ class TspInstance:
         plt.colorbar()
         plt.show()
 
-def weighted(tsp: TspInstance, start_node: int):
-    solution = [start_node, np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs)]
 
-    while len(solution) < np.ceil(tsp.size / 2):
+def weighted_regret(tsp: TspInstance, start_node: int):
+    solution = [start_node, np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs)]
+    solution_size = len(solution)
+
+    # Cache node costs and distance differences
+    node_costs = tsp.node_costs
+    distance_matrix = tsp.distance_matrix
+    distance_diff = distance_matrix[:, :, None] - distance_matrix[:, None, :]
+
+    while solution_size < np.ceil(tsp.size / 2):
         selected_node_index = selected_insertion_index = max_weighted_sum = None
 
         for node_index in range(tsp.size):
             if node_index in solution:
                 continue
 
-            def get_cost(insertion_index: int):
-                start = solution[insertion_index]
-                end = solution[(insertion_index + 1) % len(solution)]
-                cost = (
-                    tsp.node_costs[node_index]
-                    + tsp.distance_matrix[start][node_index]
-                    + tsp.distance_matrix[node_index][end]
-                    - tsp.distance_matrix[start][end]
-                )
-                return cost
+            # Compute insertion costs for all positions at once
+            insertion_costs = [
+                node_costs[node_index]
+                + distance_matrix[solution[insertion_index]][node_index]
+                + distance_matrix[node_index][
+                    solution[(insertion_index + 1) % solution_size]
+                ]
+                - distance_matrix[solution[insertion_index]][
+                    solution[(insertion_index + 1) % solution_size]
+                ]
+                for insertion_index in range(solution_size)
+            ]
 
-            insertion_costs = tuple(
-                get_cost(insertion_index) for insertion_index in range(len(solution))
-            )
+            # Find the first and second minimum insertion costs
+            first_min, second_min = np.partition(insertion_costs, 1)[:2]
+            regret = second_min - first_min
+            selected_insertion_index = np.argmin(insertion_costs)
 
-            sorted = np.argsort(insertion_costs)
-
-            if len(insertion_costs) > 1:
-                regret = insertion_costs[sorted[1]] - insertion_costs[sorted[0]]
-            else:
-                regret = insertion_costs[sorted[0]]
-
-            weighted_sum = 0.5 * regret - 0.5 * insertion_costs[sorted[0]]
+            # Compute weighted sum
+            weighted_sum = 0.5 * regret - 0.5 * first_min
 
             if max_weighted_sum is None or weighted_sum > max_weighted_sum:
                 selected_node_index = node_index
-                selected_insertion_index = sorted[0]
                 max_weighted_sum = weighted_sum
 
+        # Insert the selected node into the solution
         solution.insert(selected_insertion_index + 1, selected_node_index)
+        solution_size += 1
 
-    solution = np.array(solution)
-    return solution
+    return np.array(solution)
+
 
 def random_solution(tsp: TspInstance, start_node: int):
     num_nodes = tsp.distance_matrix.shape[0]
     num_nodes_to_select = math.ceil(num_nodes / 2)
     remaining_nodes = np.setdiff1d(np.arange(num_nodes), start_node)
-    selected_nodes = np.random.choice(remaining_nodes, num_nodes_to_select - 1, replace=False)
+    selected_nodes = np.random.choice(
+        remaining_nodes, num_nodes_to_select - 1, replace=False
+    )
     solution = np.insert(selected_nodes, 0, start_node)
     return solution
