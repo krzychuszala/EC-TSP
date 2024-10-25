@@ -67,10 +67,7 @@ class TspInstance:
         return cost
 
     def run_experiments(
-        self,
-        solution_getter: callable,
-        initial_solution_getter: callable,
-        intra_type: str,
+        self, solution_getter: callable, *params
     ) -> tuple[float, float, float, Solution]:
         # start = time.time()
 
@@ -79,17 +76,12 @@ class TspInstance:
         avg_time = 0
         avg = 0
 
-        for start_node in range(self.size):
+        for start_node in range(1):
             # show progress at the same line
             print((f"{start_node + 1}/{self.size}").zfill(7), end=" ")
 
             start_iter = time.time()
-            solution = solution_getter(
-                self,
-                start_node,
-                initial_solution_getter=initial_solution_getter,
-                intra_type=intra_type,
-            )
+            solution = solution_getter(self, start_node, *params)
             cost = self.get_cost(solution)
             stop_iter = time.time()
             iter_time = stop_iter - start_iter
@@ -179,7 +171,6 @@ def weighted_regret(tsp: TspInstance, start_node: int):
     # Cache node costs and distance differences
     node_costs = tsp.node_costs
     distance_matrix = tsp.distance_matrix
-    distance_diff = distance_matrix[:, :, None] - distance_matrix[:, None, :]
 
     while solution_size < np.ceil(tsp.size / 2):
         selected_node_index = selected_insertion_index = max_weighted_sum = None
@@ -220,12 +211,8 @@ def weighted_regret(tsp: TspInstance, start_node: int):
     return np.array(solution)
 
 
-def random_solution(tsp: TspInstance, start_node: int):
+def random_solution(tsp: TspInstance, _: int):
     num_nodes = tsp.distance_matrix.shape[0]
     num_nodes_to_select = math.ceil(num_nodes / 2)
-    remaining_nodes = np.setdiff1d(np.arange(num_nodes), start_node)
-    selected_nodes = np.random.choice(
-        remaining_nodes, num_nodes_to_select - 1, replace=False
-    )
-    solution = np.insert(selected_nodes, 0, start_node)
-    return solution
+    selected_nodes = np.random.choice(num_nodes, num_nodes_to_select, replace=False)
+    return selected_nodes
