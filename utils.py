@@ -76,9 +76,9 @@ class TspInstance:
         avg_time = 0
         avg = 0
 
-        for start_node in range(1):
+        for start_node in range(200):
             # show progress at the same line
-            print((f"{start_node + 1}/{self.size}").zfill(7), end=" ")
+            print((f"{start_node + 1}/{self.size}") + " " * 10, end="\r")
 
             start_iter = time.time()
             solution = solution_getter(self, start_node, *params)
@@ -165,7 +165,10 @@ class TspInstance:
 
 
 def weighted_regret(tsp: TspInstance, start_node: int):
-    solution = [start_node, np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs)]
+    penalty = np.zeros_like(tsp.node_costs)
+    INF = int(1e9)
+    penalty[start_node] = INF
+    solution = [start_node, np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs + penalty)]
     solution_size = len(solution)
 
     # Cache node costs and distance differences
@@ -176,7 +179,7 @@ def weighted_regret(tsp: TspInstance, start_node: int):
         selected_node_index = selected_insertion_index = max_weighted_sum = None
 
         for node_index in range(tsp.size):
-            if node_index in solution:
+            if node_index in solution or node_index == start_node:
                 continue
 
             # Compute insertion costs for all positions at once
@@ -209,7 +212,6 @@ def weighted_regret(tsp: TspInstance, start_node: int):
         solution_size += 1
 
     return np.array(solution)
-
 
 def random_solution(tsp: TspInstance, _: int):
     num_nodes = tsp.distance_matrix.shape[0]
