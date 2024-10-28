@@ -168,7 +168,7 @@ def weighted_regret(tsp: TspInstance, start_node: int):
     penalty = np.zeros_like(tsp.node_costs)
     INF = int(1e9)
     penalty[start_node] = INF
-    solution = [start_node, np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs + penalty)]
+    solution = [start_node, int(np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs + penalty))]
     solution_size = len(solution)
 
     # Cache node costs and distance differences
@@ -218,3 +218,35 @@ def random_solution(tsp: TspInstance, _: int):
     num_nodes_to_select = math.ceil(num_nodes / 2)
     selected_nodes = np.random.choice(num_nodes, num_nodes_to_select, replace=False)
     return selected_nodes
+
+def greedy_cycle(tsp: TspInstance, start_node: int):
+    penalty = np.zeros_like(tsp.node_costs)
+    INF = int(1e9)
+    penalty[start_node] = INF
+    solution = [start_node, int(np.argmin(tsp.distance_matrix[start_node] + tsp.node_costs + penalty))]
+
+    while len(solution) < np.ceil(tsp.size / 2):
+        selected_node_index = selected_path_index = min_cost = None
+
+        for node_index in range(tsp.size):
+            if node_index in solution:
+                continue
+
+            for insertion_index in range(len(solution)):
+                start = solution[insertion_index]
+                end = solution[(insertion_index + 1) % len(solution)]
+                cost = (
+                    tsp.node_costs[node_index]
+                    + tsp.distance_matrix[start][node_index]
+                    + tsp.distance_matrix[node_index][end]
+                    - tsp.distance_matrix[start][end]
+                )
+
+                if min_cost is None or cost < min_cost:
+                    selected_node_index = node_index
+                    selected_path_index = insertion_index
+                    min_cost = cost
+
+        solution.insert(selected_path_index + 1, selected_node_index)
+
+    return np.array(solution)
