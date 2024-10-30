@@ -83,6 +83,7 @@ class TspInstance:
             start_iter = time.time()
             solution = solution_getter(self, start_node, *params)
             cost = self.get_cost(solution)
+            
             stop_iter = time.time()
             iter_time = stop_iter - start_iter
 
@@ -250,3 +251,193 @@ def greedy_cycle(tsp: TspInstance, start_node: int):
         solution.insert(selected_path_index + 1, selected_node_index)
 
     return np.array(solution)
+
+def intra_route_move(tsp, solution, intra_type, steepest):
+    solution = solution.copy()
+    indexes = range(len(solution))
+    neighborhood = [(u, v) for u in indexes for v in indexes if u != v]
+    np.random.shuffle(neighborhood)
+
+    min_cost = 0
+    selected_a = selected_b = None
+
+    for index_a, index_b in neighborhood:
+        # we can draw first edge with any node, but second have to start from not node_a and not node_a+1 or node_a-1
+        if intra_type != "nodes" and abs(index_a - index_b) == 1:
+            continue
+
+        a = solution[index_a]
+        b = solution[index_b]
+
+        a_prev = solution[index_a - 1]
+        b_prev = solution[index_b - 1]
+        if index_a - 1 < 0:
+            a_prev = solution[len(solution) - 1]
+        if index_b - 1 < 0:
+            b_prev = solution[len(solution) - 1]
+
+        a_next = solution[(index_a + 1) % len(solution)]
+        b_next = solution[(index_b + 1) % len(solution)]
+
+        if intra_type == "nodes":
+            if abs(index_a - index_b) == 1: # Adjacent case
+                if index_a < index_b:  # Case where a is directly before b
+                    cost_change = (
+                        tsp.distance_matrix[a_prev, b]
+                        + tsp.distance_matrix[a, b_next]
+                        - tsp.distance_matrix[a_prev, a]
+                        - tsp.distance_matrix[b, b_next]
+                    )
+                else:  # Case where b is directly before a
+                    cost_change = (
+                        tsp.distance_matrix[b_prev, a]
+                        + tsp.distance_matrix[b, a_next]
+                        - tsp.distance_matrix[b_prev, b]
+                        - tsp.distance_matrix[a, a_next]
+                    )
+            elif abs(index_a - index_b) == len(solution) - 1:  # Adjacent case - last and first node
+                if index_a > index_b:
+                    cost_change = (
+                        tsp.distance_matrix[a_prev, b]
+                        + tsp.distance_matrix[a, b_next]
+                        - tsp.distance_matrix[a_prev, a]
+                        - tsp.distance_matrix[b, b_next]
+                    )
+                else:
+                    cost_change = (
+                        tsp.distance_matrix[b_prev, a]
+                        + tsp.distance_matrix[b, a_next]
+                        - tsp.distance_matrix[b_prev, b]
+                        - tsp.distance_matrix[a, a_next]
+                    )
+            else:
+                # Non-adjacent case, use the general formula
+                cost_change = (
+                    tsp.distance_matrix[a_prev, b]
+                    + tsp.distance_matrix[b, a_next]
+                    + tsp.distance_matrix[b_prev, a]
+                    + tsp.distance_matrix[a, b_next]
+                    - tsp.distance_matrix[a_prev, a]
+                    - tsp.distance_matrix[a, a_next]
+                    - tsp.distance_matrix[b_prev, b]
+                    - tsp.distance_matrix[b, b_next]
+                )
+
+        else:
+            cost_change = (
+                tsp.distance_matrix[a, b]
+                + tsp.distance_matrix[a_next, b_next]
+                - tsp.distance_matrix[a, a_next]
+                - tsp.distance_matrix[b, b_next]
+            )
+
+        if cost_change < min_cost:
+            min_cost = cost_change
+            selected_a = index_a
+            selected_b = index_b
+
+            if not steepest:
+                break
+
+    if selected_a is not None:
+        if intra_type == "nodes":
+            # Just swap the two nodes
+            solution[selected_a], solution[selected_b] = (
+                solution[selected_b],
+                solution[selected_a],
+            )
+        else:
+            if selected_a < selected_b:
+                subsequence = solution[(selected_a + 1):selected_b+1][::-1]
+                solution[(selected_a + 1):selected_b+1] = subsequence
+            else:
+                subsequence = solution[(selected_b + 1):selected_a+1][::-1]
+                solution[(selected_b + 1):selected_a+1] = subsequence
+
+    return solution, min_cost
+
+
+def inter_route_move(tsp, solution, steepest):
+    import itertools
+    solution = solution.copy()
+    possible_unselect = set(solution)
+    possible_select = set(range(tsp.size)) - possible_unselect
+    neighborhood = list(itertools.product(possible_unselect, possible_select))
+    np.random.shuffle(neighborhood)
+
+    min_cost = 0
+    to_unselect = to_select = None
+
+    for test_unselect, test_select in neighborhood:
+        insert_index = np.where(solution == test_unselect)[0][0]
+
+        prev = solution[insert_index - 1]
+        next = solution[(insert_index + 1) % len(solution)]
+
+        cost_change = (
+            tsp.node_costs[test_select]
+            + tsp.distance_matrix[prev, test_select]
+            + tsp.distance_matrix[test_select, next]
+            - tsp.node_costs[test_unselect]
+            - tsp.distance_matrix[prev, test_unselect]
+            - tsp.distance_matrix[test_unselect, next]
+        )
+
+        if cost_change < min_cost:
+            min_cost = cost_change
+            to_unselect = test_unselect
+            to_select = test_select
+
+            if not steepest:
+                break
+
+    if to_unselect is not None and not steepest:
+        solution[np.where(solution == to_unselect)] = to_select
+
+    if steepest:
+        return min_cost, to_unselect, to_select
+    else:
+        return solution, min_cost
+
+def local_search(
+    tsp: TspInstance,
+    start_node: int,
+    initial_solution_getter: callable,
+    intra_type: str,
+    steepest: bool,
+):
+    solution = initial_solution_getter(tsp, start_node)
+ 
+    while True:
+        
+        if steepest:
+            cost_change_1, to_unselect, to_select = inter_route_move(tsp, solution, steepest)
+            solution_2, cost_change_2 = intra_route_move(
+                tsp, solution, intra_type, steepest
+            )
+            if cost_change_1 < cost_change_2:
+                cost_change = cost_change_1
+                if to_unselect is not None:
+                    solution[np.where(solution == to_unselect)] = to_select
+            else:
+                solution, cost_change = solution_2, cost_change_2
+        else:
+            if np.random.rand() < 0.5:
+                solution, cost_change = inter_route_move(tsp, solution, steepest)
+
+                if cost_change == 0:
+                    solution, cost_change = intra_route_move(
+                        tsp, solution, intra_type, steepest
+                    )
+            else:
+                solution, cost_change = intra_route_move(
+                    tsp, solution, intra_type, steepest
+                )
+
+                if cost_change == 0:
+                    solution, cost_change = inter_route_move(tsp, solution, steepest)
+
+        if cost_change == 0:
+            break
+        
+    return solution
